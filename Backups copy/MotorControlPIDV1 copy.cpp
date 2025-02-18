@@ -1,5 +1,7 @@
 #include <Arduino.h>
 #include <ESP32Encoder.h>
+//Corresponde a la copia de seguridad del 13 de enero. .
+
 /**
  * Características y Funcionalidades del Código (Antes de los Cambios)
  *
@@ -40,8 +42,6 @@
  * 2. Anti-Windup:
  *    - Se añadió una limitación a la acumulación de errores en el cálculo del PID (término integral), para evitar el windup.
  *    - Esto asegura que el término integral no crezca indefinidamente, lo que mejora la respuesta del sistema y evita comportamientos inestables.
- * 
- * Nota: Esto funciona para cuando la velocidad maxima es 0.6. SOlucion sencilla. Trabajar con 0.3RPS. Jajaja
  */
 
 class Motor {
@@ -136,23 +136,15 @@ class Motor {
       return velocidad;
     }
 
-/* Version ORIGINAL. No tiene el ajuste dinamico.*/
     float calcularPID(float referencia, float actual) {
       errorActual = referencia - actual;
       sumaErrores += errorActual;
-      
-    //Linea Agregada el 23 de Enero, agregando una modificacion al antiwindup.
-        // Evitamos la acumulación descontrolada del error integral si la salida está saturada
-    /*if (valorPWM < 255 && valorPWM > -255) {
-        sumaErrores += errorActual;
-    }*/
-
 
       // Agregamos una proteccion atraves de la suma de los errores.  Para ponerle un limite.
 
       if (sumaErrores > 1000) sumaErrores = 1000; // Ajusta según tus necesidades
       if (sumaErrores < -1000) sumaErrores = -1000;
-    
+
       derivadaError = errorActual - errorPrevio;
 
       float salida = (kp * errorActual) + (ki * sumaErrores) + (kd * derivadaError);
@@ -202,10 +194,4 @@ class Motor {
     float getValorPWM() {
       return valorPWM;
     }
-
-void resetEncodersValues(){
-
-  encoder.clearCount();
-}
-
 };

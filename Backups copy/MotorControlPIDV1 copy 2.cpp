@@ -140,19 +140,12 @@ class Motor {
     float calcularPID(float referencia, float actual) {
       errorActual = referencia - actual;
       sumaErrores += errorActual;
-      
-    //Linea Agregada el 23 de Enero, agregando una modificacion al antiwindup.
-        // Evitamos la acumulación descontrolada del error integral si la salida está saturada
-    /*if (valorPWM < 255 && valorPWM > -255) {
-        sumaErrores += errorActual;
-    }*/
-
 
       // Agregamos una proteccion atraves de la suma de los errores.  Para ponerle un limite.
 
       if (sumaErrores > 1000) sumaErrores = 1000; // Ajusta según tus necesidades
       if (sumaErrores < -1000) sumaErrores = -1000;
-    
+
       derivadaError = errorActual - errorPrevio;
 
       float salida = (kp * errorActual) + (ki * sumaErrores) + (kd * derivadaError);
@@ -202,10 +195,4 @@ class Motor {
     float getValorPWM() {
       return valorPWM;
     }
-
-void resetEncodersValues(){
-
-  encoder.clearCount();
-}
-
 };
