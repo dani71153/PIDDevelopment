@@ -138,6 +138,13 @@ class Motor {
 
 /* Version ORIGINAL. No tiene el ajuste dinamico.*/
     float calcularPID(float referencia, float actual) {
+      
+      if(referencia == 0)
+      {
+        errorActual=0;
+        sumaErrores =0;
+      }
+
       errorActual = referencia - actual;
       sumaErrores += errorActual;
       
