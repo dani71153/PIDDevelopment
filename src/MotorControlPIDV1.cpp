@@ -62,10 +62,10 @@ class Motor {
     const float pulsosPorRevolucion = 4320.0 * 2; // Pulsos del encoder por revolución
     float valorPWM; // Nueva variable para almacenar el valor actual del PWM
     float ajuste = 1;
-
     int pwmChannel = 0; // Canal de PWM
     int pwmResolution = 8; // Resolución del PWM
     float pwmFrequency = 1000; // Frecuencia del PWM por defecto en Hz
+    float referenciaAnterior = 0.0; // Nueva variable para almacenar la referencia anterior
 
   public:
     Motor(int enable, int in1, int in2, int encoderA, int encoderB, float kp, float ki, float kd, unsigned long muestreo) 
@@ -97,13 +97,28 @@ class Motor {
       pwmResolution = resolucion;
       ledcSetup(pwmChannel, pwmFrequency, pwmResolution); // Actualizar configuración del canal PWM
     }
-
+    // Configuración de velocidad por ticks por segundo
     void setReferenciaVelocidad(float referencia) {
-      referenciaVelocidad = referencia;
+        // Verificar si hay un cambio de referencia
+        if (referencia != referenciaAnterior && referencia != 0) {
+            errorActual = 0; // Resetear el error actual
+            sumaErrores = 0; // Resetear la suma de errores
+        }
+        referenciaAnterior = referencia; // Actualizar la referencia anterior
+        referenciaVelocidad = referencia; // Asignar la nueva referencia
     }
 
+    // Configuración de velocidad por RPS (Revoluciones por segundo)
     void setReferenciaVelocidadRPS(float rps) {
-      referenciaVelocidad = (rps * pulsosPorRevolucion) / ajuste; 
+      float nuevaReferencia = (rps * pulsosPorRevolucion) / ajuste; // Convertir RPS a ticks por segundo
+
+      // Verificar si hay un cambio de referencia
+      if (nuevaReferencia != referenciaAnterior && nuevaReferencia != 0) {
+          errorActual = 0; // Resetear el error actual
+          sumaErrores = 0; // Resetear la suma de errores
+      }
+      referenciaAnterior = nuevaReferencia; // Actualizar la referencia anterior
+      referenciaVelocidad = nuevaReferencia; // Asignar la nueva referencia
     }
 
     void setReferenciaVelocidadRPM(float rpm) {
@@ -139,11 +154,6 @@ class Motor {
 /* Version ORIGINAL. No tiene el ajuste dinamico.*/
     float calcularPID(float referencia, float actual) {
       
-      if(referencia == 0)
-      {
-        errorActual=0;
-        sumaErrores =0;
-      }
 
       errorActual = referencia - actual;
       sumaErrores += errorActual;
@@ -157,8 +167,8 @@ class Motor {
 
       // Agregamos una proteccion atraves de la suma de los errores.  Para ponerle un limite.
 
-      if (sumaErrores > 1000) sumaErrores = 1000; // Ajusta según tus necesidades
-      if (sumaErrores < -1000) sumaErrores = -1000;
+      if (sumaErrores > 2000) sumaErrores = 2000; // Ajusta según tus necesidades
+      if (sumaErrores < -2000) sumaErrores = -2000;
     
       derivadaError = errorActual - errorPrevio;
 

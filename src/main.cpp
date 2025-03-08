@@ -8,7 +8,7 @@ ACS712 myACS(25, 5.0, 1023, 200);
 // Instanciar motores
 // Motor(int enable, int in1, int in2, int encoderA, int encoderB, float kp, float ki, float kd, unsigned long muestreo)
 Motor motor3(21, 23, 22, 19, 18, 0.1, 0.15, 0.08, 1);
-Motor motor4(15, 2, 4, 34, 35, 0.1, 0.15, 0.08, 1);
+Motor motor4(15, 2, 4, 34, 35, 0.1, 0.30, 0.0, 1);
 
 String inputCommand = ""; // Variable para almacenar el comando recibido
 void processCommand(String command);
