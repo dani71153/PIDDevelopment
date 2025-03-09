@@ -7,9 +7,9 @@ ACS712 myACS(25, 5.0, 1023, 200);
 
 // Instanciar motores
 // Motor(int enable, int in1, int in2, int encoderA, int encoderB, float kp, float ki, float kd, unsigned long muestreo)
- //Motor motor3(21, 23, 22, 19, 18, 0.05, 0.088, 0.075, 50, 0); //Funciona a 0.25.
+ //Motor motor3(21, 23, 22, 19, 18, 0.05, 0.088, 0.075, 50, 0); //Funciona a 0.25. El elemento es funcional
 
- Motor motor3(21, 23, 22, 19, 18, 0.05, 0.0913, 0.075, 50, 0);
+ Motor motor3(21, 23, 22, 19, 18, 0.05, 0.0913, 0.075, 50, 0); //Elemento funcioal perfecto, rango desde -0.03 a 0.03RPS.
 
  //Motor motor3(21, 23, 22, 19, 18, 0, 0, 0, 50, 0);
 
