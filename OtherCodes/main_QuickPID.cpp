@@ -1,4 +1,4 @@
-#include <MotorControlPIDV1.cpp>
+#include <MotorControlPIDQuickPID.cpp>
 #include <ACS712.h>
 
 
@@ -7,17 +7,12 @@ ACS712 myACS(25, 5.0, 1023, 200);
 
 // Instanciar motores
 // Motor(int enable, int in1, int in2, int encoderA, int encoderB, float kp, float ki, float kd, unsigned long muestreo)
- //Motor motor3(21, 23, 22, 19, 18, 0.05, 0.088, 0.075, 50, 0); //Funciona a 0.25.
-
- Motor motor3(21, 23, 22, 19, 18, 0.05, 0.0913, 0.075, 50, 0);
-
- //Motor motor3(21, 23, 22, 19, 18, 0, 0, 0, 50, 0);
-
-Motor motor4(15, 2, 4, 34, 35, 0.1, 0.1, 0.055, 50, 1);
+Motor motor3(21, 23, 22, 19, 18, 0, 0, 0.0, 1);
+Motor motor4(15, 2, 4, 34, 35, 0.1, 0.15, 0.01, 1);
 
 String inputCommand = ""; // Variable para almacenar el comando recibido
 void processCommand(String command);
-bool usarPID = true; // Variable para controlar si se usa PID o noz
+bool usarPID = true; // Variable para controlar si se usa PID o no
 unsigned long lastCommandTime = 0; // Variable para almacenar el tiempo del último comando recibido
 const unsigned long timeout = 1000; // Tiempo de espera (1 segundo)
 
@@ -25,7 +20,7 @@ void setup() {
   Serial.begin(115200);
   while (!Serial); // Esperamos que el serial esté habilitado.
 
-  Serial.println("Inicializando el ESP32");
+  Serial.println("Inicializando el ESP32 con QuickPID");
 
   // Inicializar motores
   motor3.inicializar();
@@ -120,7 +115,6 @@ void processCommand(String command) {
       break;
     }
 
-
     case 'o': {
       // Comando para configurar PWM de los motores directamente (sin PID)
       command.remove(0, 1); // Eliminar el prefijo "o"
@@ -156,12 +150,51 @@ void processCommand(String command) {
     }
 
     case 'e': {
-      // Comando para devolver los valores de los encoders filtrados
+      // Comando para devolver los valores de los encoders
       Serial.print("<");
-      Serial.print(motor3.leerEncoder()); // Usar el valor filtrado
+      Serial.print(motor3.leerEncoder());
       Serial.print(",");
-      Serial.print(motor4.leerEncoder()); // Usar el valor filtrado
+      Serial.print(motor4.leerEncoder());
       Serial.println(">");
+      break;
+    }
+
+    case 'p': {
+      // Nuevo comando para ajustar parámetros PID
+      if (command.length() < 2 || command.charAt(1) != ' ') {
+        Serial.println("<Error: Formato inválido. Debe ser <p motor kp ki kd>>");
+        break;
+      }
+
+      // Eliminar el prefijo "p " (incluyendo el espacio)
+      command.remove(0, 2);
+
+      // Encontrar espacios separando los valores
+      int primerEspacio = command.indexOf(' ');
+      int segundoEspacio = command.indexOf(' ', primerEspacio + 1);
+      int tercerEspacio = command.indexOf(' ', segundoEspacio + 1);
+
+      if (primerEspacio == -1 || segundoEspacio == -1 || tercerEspacio == -1) {
+        Serial.println("<Error: Formato de comando inválido, faltan parámetros>");
+        break;
+      }
+
+      // Separar los valores
+      int motorNum = command.substring(0, primerEspacio).toInt();
+      float kp = command.substring(primerEspacio + 1, segundoEspacio).toFloat();
+      float ki = command.substring(segundoEspacio + 1, tercerEspacio).toFloat();
+      float kd = command.substring(tercerEspacio + 1).toFloat();
+
+      // Actualizar parámetros PID según el motor seleccionado
+      if (motorNum == 3) {
+        motor3.setParametrosPID(kp, ki, kd);
+        Serial.println("<Parámetros PID actualizados para Motor 3>");
+      } else if (motorNum == 4) {
+        motor4.setParametrosPID(kp, ki, kd);
+        Serial.println("<Parámetros PID actualizados para Motor 4>");
+      } else {
+        Serial.println("<Error: Motor no válido>");
+      }
       break;
     }
 
@@ -204,10 +237,78 @@ void processCommand(String command) {
       Serial.println(">");
       break;
     }
+
+    case 'd': {
+      // Comando para mostrar diagnóstico del PID
+      if (command.length() > 1 && command.charAt(1) == '3') {
+        // Diagnóstico del motor 3
+        float p, i, d;
+        motor3.getPIDTerms(p, i, d);
+        
+        Serial.print("<Motor 3 - Velocidad: ");
+        Serial.print(motor3.getVelocidadRPS());
+        Serial.print(" RPS, PWM: ");
+        Serial.print(motor3.getValorPWM());
+        Serial.print(", P: ");
+        Serial.print(p);
+        Serial.print(", I: ");
+        Serial.print(i);
+        Serial.print(", D: ");
+        Serial.print(d);
+        Serial.println(">");
+      } 
+      else if (command.length() > 1 && command.charAt(1) == '4') {
+        // Diagnóstico del motor 4
+        float p, i, d;
+        motor4.getPIDTerms(p, i, d);
+        
+        Serial.print("<Motor 4 - Velocidad: ");
+        Serial.print(motor4.getVelocidadRPS());
+        Serial.print(" RPS, PWM: ");
+        Serial.print(motor4.getValorPWM());
+        Serial.print(", P: ");
+        Serial.print(p);
+        Serial.print(", I: ");
+        Serial.print(i);
+        Serial.print(", D: ");
+        Serial.print(d);
+        Serial.println(">");
+      }
+      else {
+        // Ambos motores
+        float p3, i3, d3, p4, i4, d4;
+        motor3.getPIDTerms(p3, i3, d3);
+        motor4.getPIDTerms(p4, i4, d4);
+        
+        Serial.print("<Motor 3 - Vel: ");
+        Serial.print(motor3.getVelocidadRPS());
+        Serial.print(" RPS, PWM: ");
+        Serial.print(motor3.getValorPWM());
+        Serial.print(", [P:");
+        Serial.print(p3);
+        Serial.print(" I:");
+        Serial.print(i3);
+        Serial.print(" D:");
+        Serial.print(d3);
+        Serial.print("] | Motor 4 - Vel: ");
+        Serial.print(motor4.getVelocidadRPS());
+        Serial.print(" RPS, PWM: ");
+        Serial.print(motor4.getValorPWM());
+        Serial.print(", [P:");
+        Serial.print(p4);
+        Serial.print(" I:");
+        Serial.print(i4);
+        Serial.print(" D:");
+        Serial.print(d4);
+        Serial.println("]>");
+      }
+      break;
+    }
+
     default: {
       // Comando inválido
       Serial.println("<Comando inválido>");
       break;
     }
   }
-}
+} 
