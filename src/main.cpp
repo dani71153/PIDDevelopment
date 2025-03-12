@@ -3,7 +3,7 @@
 
 
 // === CONFIGURACIÓN DEL SENSOR ACS712 ===
-ACS712 myACS(25, 5.0, 1023, 200);
+ACS712 myACS(25, 3.3, 4095, 185);
 
 // Instanciar motores
 // Motor(int enable, int in1, int in2, int encoderA, int encoderB, float kp, float ki, float kd, unsigned long muestreo)
@@ -31,10 +31,10 @@ void setup() {
   //Definimos el Pin de 25 como pulldown
   pinMode(25, INPUT_PULLDOWN);
   // Calibrar OFFSET del ACS712 en DC
-  myACS.autoMidPointDC(10000); // 50 lecturas => Ajusta a tu gusto
+  myACS.autoMidPointDC(1000); // 50 lecturas => Ajusta a tu gusto
 
   // Definir el ruido
-  myACS.setNoisemV(5.88);
+  myACS.setNoisemV(60.88);
 }
 
 void loop() {
@@ -184,17 +184,7 @@ void processCommand(String command) {
     }
     case 'c': {
       float current_mA = myACS.mA_DC(60); // Leer corriente
-      float umbral = 50.0;
-
-      if (current_mA > umbral) {
-        // Corriente positiva
-      } else if (current_mA < -umbral) {
-        // Corriente negativa
-      } else {
-        current_mA = 0.0;
-      }
-
-      Serial.print("<Corriente (mA): ");
+      Serial.print("<");
       Serial.print(current_mA / 1000);
       Serial.println(">");
       break;
