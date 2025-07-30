@@ -1,5 +1,8 @@
+
 #include <Arduino.h>
 #include <ESP32Encoder.h>
+#include "RampaVelocidad.h"
+
 /**
  * Características y Funcionalidades del Código (Antes de los Cambios)
  *
@@ -45,154 +48,146 @@
  */
 
 class Motor {
-  private:
-    int pinEnable;
-    int pinIN1;
-    int pinIN2;
-    int pinEncoderA;
-    int pinEncoderB;
+private:
+    // Pines de control (BTS7960)
+    int pinRPWM, pinLPWM, pinR_EN, pinL_EN;
+    int pinEncoderA, pinEncoderB;
+
+    // PID y control
     float kp, ki, kd;
-    float referenciaVelocidad;
-    float errorActual, errorPrevio, sumaErrores, derivadaError;
-    unsigned long tiempoPrevio;
-    unsigned long intervaloMuestreo;
+    float referenciaVelocidad, errorActual, errorPrevio, sumaErrores, derivadaError;
+    unsigned long tiempoPrevio, intervaloMuestreo;
+    float velocidadActual, valorPWM;
+    float currentReferenciaVelocidad = 0;
+    float maxAceleracion = 10000;
+
+    // Encoder
     ESP32Encoder encoder;
     long posicionEncoder;
-    float velocidadActual;
-    const float pulsosPorRevolucion = 4320.0 * 2; // Pulsos del encoder por revolución
-    float valorPWM; // Nueva variable para almacenar el valor actual del PWM
-    float ajuste = 1;
 
-    int pwmChannel = 0; // Canal de PWM
-    int pwmResolution = 8; // Resolución del PWM
-    float pwmFrequency = 1000; // Frecuencia del PWM por defecto en Hz
+    // PWM (ESP32)
+    int channelRPWM, channelLPWM;
+    int pwmResolution = 8;  // 8 bits: 0-255
+    float pwmFrequency = 1000; // 1 kHz
 
-  public:
-    Motor(int enable, int in1, int in2, int encoderA, int encoderB, float kp, float ki, float kd, unsigned long muestreo) 
-      : pinEnable(enable), pinIN1(in1), pinIN2(in2), pinEncoderA(encoderA), pinEncoderB(encoderB), kp(kp), ki(ki), kd(kd), 
-        intervaloMuestreo(muestreo), errorActual(0), errorPrevio(0), sumaErrores(0), derivadaError(0), referenciaVelocidad(0), 
-        tiempoPrevio(0), posicionEncoder(0), velocidadActual(0), valorPWM(0) {
+    // Motor/encoder
+    const float pulsosPorRevolucion = 270 * 64;
+    RampaVelocidad rampa;
+
+public:
+    // Constructor
+    Motor(int rpwm, int lpwm, int r_en, int l_en, int encoderA, int encoderB, float Kp, float Ki, float Kd, unsigned long muestreo, float aceleracionMax = 85000.0f,
+          int canalRPWM = 0, int canalLPWM = 1, int resolucion = 8, float frecuencia = 1000)
+        : pinRPWM(rpwm), pinLPWM(lpwm), pinR_EN(r_en), pinL_EN(l_en),
+          pinEncoderA(encoderA), pinEncoderB(encoderB),
+          kp(Kp), ki(Ki), kd(Kd),
+          intervaloMuestreo(muestreo),
+          rampa(aceleracionMax),
+          channelRPWM(canalRPWM), channelLPWM(canalLPWM),
+          pwmResolution(resolucion), pwmFrequency(frecuencia)
+    {
+        referenciaVelocidad = 0;
+        errorActual = errorPrevio = sumaErrores = derivadaError = 0;
+        posicionEncoder = 0;
+        velocidadActual = valorPWM = 0;
     }
 
     void inicializar() {
-      // Configuración de los pines de motor
-      pinMode(pinIN1, OUTPUT);
-      pinMode(pinIN2, OUTPUT);
+        pinMode(pinR_EN, OUTPUT); digitalWrite(pinR_EN, LOW);
+        pinMode(pinL_EN, OUTPUT); digitalWrite(pinL_EN, LOW);
 
-      // Configuración del encoder
-      encoder.attachHalfQuad(pinEncoderA, pinEncoderB);
-      encoder.clearCount();
+        // PWM: asociar pines a canales y configurar canales
+        ledcSetup(channelRPWM, pwmFrequency, pwmResolution);
+        ledcSetup(channelLPWM, pwmFrequency, pwmResolution);
+        ledcAttachPin(pinRPWM, channelRPWM);
+        ledcAttachPin(pinLPWM, channelLPWM);
 
-      // Configuración inicial del PWM
-      ledcSetup(pwmChannel, pwmFrequency, pwmResolution); // Configurar canal de PWM
-      ledcAttachPin(pinEnable, pwmChannel); // Asociar pinEnable al canal de PWM
+        // Apagar PWM
+        ledcWrite(channelRPWM, 0);
+        ledcWrite(channelLPWM, 0);
 
-      // Inicializar tiempo
-      tiempoPrevio = millis();
+        // Encoder
+        encoder.attachHalfQuad(pinEncoderA, pinEncoderB);
+        encoder.clearCount();
+        posicionEncoder = encoder.getCount();
+        tiempoPrevio = millis();
     }
 
-    // Configurar frecuencia del PWM
-    void configurarPWM(float frecuencia, int resolucion = 8) {
-      pwmFrequency = frecuencia;
-      pwmResolution = resolucion;
-      ledcSetup(pwmChannel, pwmFrequency, pwmResolution); // Actualizar configuración del canal PWM
-    }
-
-    void setReferenciaVelocidad(float referencia) {
-      referenciaVelocidad = referencia;
-    }
-
-    void setReferenciaVelocidadRPS(float rps) {
-      referenciaVelocidad = (rps * pulsosPorRevolucion) / ajuste; 
-    }
-
-    void setReferenciaVelocidadRPM(float rpm) {
-      float rps = rpm / 60.0;
-      referenciaVelocidad = (rps * pulsosPorRevolucion) / ajuste; 
-    }
+    void setReferenciaVelocidad(float referencia) { referenciaVelocidad = referencia; }
+    void setReferenciaVelocidadRPS(float rps) { referenciaVelocidad = rps * pulsosPorRevolucion; }
+    void setReferenciaVelocidadRPM(float rpm) { referenciaVelocidad = (rpm / 60.0f) * pulsosPorRevolucion; }
 
     void actualizar() {
-      unsigned long tiempoActual = millis();
-      if (tiempoActual - tiempoPrevio >= intervaloMuestreo) {
-        long posicionAnterior = posicionEncoder;
-        posicionEncoder = leerEncoder();
-
-        velocidadActual = calcularVelocidad(posicionEncoder, posicionAnterior, tiempoPrevio);
-        tiempoPrevio = tiempoActual;
-
-        valorPWM = calcularPID(referenciaVelocidad, velocidadActual); 
-        controlarMotor(valorPWM);
-      }
+        unsigned long tiempoActual = millis();
+        if (tiempoActual - tiempoPrevio >= intervaloMuestreo) {
+            long posicionAnterior = posicionEncoder;
+            posicionEncoder = leerEncoder();
+            velocidadActual = calcularVelocidad(posicionEncoder, posicionAnterior, tiempoPrevio);
+            tiempoPrevio = tiempoActual;
+            float referenciaSuavizada = rampa.actualizar(referenciaVelocidad);
+            valorPWM = calcularPID(referenciaSuavizada, velocidadActual);
+            controlarMotor(valorPWM);
+        }
     }
 
-    long leerEncoder() {
-      return encoder.getCount();
+    long leerEncoder() { return encoder.getCount(); }
+
+    float calcularVelocidad(long posActual, long posAnterior, unsigned long tiempoAnterior) {
+        long deltaPosicion = posActual - posAnterior;
+        unsigned long deltaTiempo = millis() - tiempoAnterior;
+        if (deltaTiempo == 0) return 0;
+        return (deltaPosicion / (float)deltaTiempo) * 1000.0f;
     }
 
-    float calcularVelocidad(long posicionActual, long posicionAnterior, unsigned long tiempoAnterior) {
-      long deltaPosicion = posicionActual - posicionAnterior;
-      unsigned long deltaTiempo = millis() - tiempoAnterior;
-      float velocidad = (deltaPosicion / (float)deltaTiempo) * 1000;
-      return velocidad;
-    }
-
-/* Version ORIGINAL. No tiene el ajuste dinamico.*/
     float calcularPID(float referencia, float actual) {
-      errorActual = referencia - actual;
-      sumaErrores += errorActual;
-
-      // Agregamos una proteccion atraves de la suma de los errores.  Para ponerle un limite.
-
-      if (sumaErrores > 1000) sumaErrores = 1000; // Ajusta según tus necesidades
-      if (sumaErrores < -1000) sumaErrores = -1000;
-
-      derivadaError = errorActual - errorPrevio;
-
-      float salida = (kp * errorActual) + (ki * sumaErrores) + (kd * derivadaError);
-      errorPrevio = errorActual;
-
-      if (salida > 255) salida = 255;
-      if (salida < -255) salida = -255;
-
-      return salida;
+        if (referencia == 0) {
+            errorActual = 0; sumaErrores = 0;
+        } else {
+            errorActual = referencia - actual;
+            sumaErrores += errorActual;
+        }
+        // Anti-windup
+        sumaErrores = constrain(sumaErrores, -2000, 2000);
+        derivadaError = errorActual - errorPrevio;
+        errorPrevio = errorActual;
+        float salida = (kp * errorActual) + (ki * sumaErrores) + (kd * derivadaError);
+        return constrain(salida, -255.0, 255.0);
     }
 
     void controlarMotor(float valorPID) {
-      if (valorPID > 0) {
-        digitalWrite(pinIN1, HIGH);
-        digitalWrite(pinIN2, LOW);
-        ledcWrite(pwmChannel, abs(valorPID));
-      } else if (valorPID < 0) {
-        digitalWrite(pinIN1, LOW);
-        digitalWrite(pinIN2, HIGH);
-        ledcWrite(pwmChannel, abs(valorPID));
-      } else {
-      //Agregamos un freno activo.
-        digitalWrite(pinIN1, HIGH);
-        digitalWrite(pinIN2, HIGH); // Freno activo
-        ledcWrite(pwmChannel, 0);
-      }
+        digitalWrite(pinR_EN, HIGH);
+        digitalWrite(pinL_EN, HIGH);
+        int pwmValue = (int)abs(valorPID);
+
+        if (valorPID > 1.0) { // Adelante
+            ledcWrite(channelLPWM, 0);
+            ledcWrite(channelRPWM, pwmValue);
+        } else if (valorPID < -1.0) { // Atrás
+            ledcWrite(channelRPWM, 0);
+            ledcWrite(channelLPWM, pwmValue);
+        } else { // Freno
+            ledcWrite(channelRPWM, 0);
+            ledcWrite(channelLPWM, 0);
+        }
     }
 
     void desactivarMotor() {
-      ledcWrite(pwmChannel, 0);
-      digitalWrite(pinIN1, LOW);
-      digitalWrite(pinIN2, LOW);
+        ledcWrite(channelRPWM, 0);
+        ledcWrite(channelLPWM, 0);
+        digitalWrite(pinR_EN, LOW);
+        digitalWrite(pinL_EN, LOW);
     }
 
-    float getVelocidadTicksPorSegundo() {
-      return velocidadActual;
+    void resetEncoderValues() {
+        encoder.clearCount();
+        posicionEncoder = 0;
     }
 
-    float getVelocidadRPS() {
-      return (velocidadActual / pulsosPorRevolucion);
-    }
+    // Getters
+    float getVelocidadTicksPorSegundo() { return velocidadActual; }
+    float getVelocidadRPS() { return velocidadActual / pulsosPorRevolucion; }
+    float getVelocidadRPM() { return (velocidadActual / pulsosPorRevolucion) * 60.0f; }
+    float getValorPWM() { return valorPWM; }
 
-    float getVelocidadRPM() {
-      return ((velocidadActual / pulsosPorRevolucion) * 60.0);
-    }
-
-    float getValorPWM() {
-      return valorPWM;
-    }
+    void sincronizarRampa() { rampa.setVelocidadActual(velocidadActual);}
 };

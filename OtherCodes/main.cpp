@@ -3,21 +3,17 @@
 
 
 // === CONFIGURACIÓN DEL SENSOR ACS712 ===
-ACS712 myACS(25, 5.0, 1023, 200);
+ACS712 myACS(25, 3.3, 4095, 185);
 
 // Instanciar motores
 // Motor(int enable, int in1, int in2, int encoderA, int encoderB, float kp, float ki, float kd, unsigned long muestreo)
- //Motor motor3(21, 23, 22, 19, 18, 0.05, 0.088, 0.075, 50, 0); //Funciona a 0.25. El elemento es funcional
-
- Motor motor3(21, 23, 22, 19, 18, 0.05, 0.0913, 0.075, 50, 0); //Elemento funcioal perfecto, rango desde -0.03 a 0.03RPS.
-
- //Motor motor3(21, 23, 22, 19, 18, 0, 0, 0, 50, 0);
-
-Motor motor4(15, 2, 4, 34, 35, 0.1, 0.1, 0.055, 50, 1);
+// Motor motor3(21, 23, 22, 19, 18, 0.1, 0.15, 0.08, 1, 0);
+Motor motor3(21, 23, 22, 19, 18, 0, 0, 0, 1, 0);
+Motor motor4(15, 2, 4, 34, 35, 0.1, 0.15, 0.08, 30, 1);
 
 String inputCommand = ""; // Variable para almacenar el comando recibido
 void processCommand(String command);
-bool usarPID = true; // Variable para controlar si se usa PID o noz
+bool usarPID = true; // Variable para controlar si se usa PID o no
 unsigned long lastCommandTime = 0; // Variable para almacenar el tiempo del último comando recibido
 const unsigned long timeout = 1000; // Tiempo de espera (1 segundo)
 
@@ -36,10 +32,10 @@ void setup() {
   //Definimos el Pin de 25 como pulldown
   pinMode(25, INPUT_PULLDOWN);
   // Calibrar OFFSET del ACS712 en DC
-  myACS.autoMidPointDC(10000); // 50 lecturas => Ajusta a tu gusto
+  myACS.autoMidPointDC(1000); // 50 lecturas => Ajusta a tu gusto
 
   // Definir el ruido
-  myACS.setNoisemV(5.88);
+  myACS.setNoisemV(60.88);
 }
 
 void loop() {
@@ -156,11 +152,11 @@ void processCommand(String command) {
     }
 
     case 'e': {
-      // Comando para devolver los valores de los encoders filtrados
+      // Comando para devolver los valores de los encoders
       Serial.print("<");
-      Serial.print(motor3.leerEncoder()); // Usar el valor filtrado
+      Serial.print(motor3.leerEncoder());
       Serial.print(",");
-      Serial.print(motor4.leerEncoder()); // Usar el valor filtrado
+      Serial.print(motor4.leerEncoder());
       Serial.println(">");
       break;
     }
@@ -189,17 +185,7 @@ void processCommand(String command) {
     }
     case 'c': {
       float current_mA = myACS.mA_DC(60); // Leer corriente
-      float umbral = 50.0;
-
-      if (current_mA > umbral) {
-        // Corriente positiva
-      } else if (current_mA < -umbral) {
-        // Corriente negativa
-      } else {
-        current_mA = 0.0;
-      }
-
-      Serial.print("<Corriente (mA): ");
+      Serial.print("<");
       Serial.print(current_mA / 1000);
       Serial.println(">");
       break;

@@ -1,111 +1,136 @@
-#include <MotorControlPIDV1.cpp>
+#include "MotorControlPIDV1.cpp"
+#include <ESP32Encoder.h>
 #include <ACS712.h>
 
+// === Pines para motores 3 y 4 (ESP32) ===
+#define RPWM3     25
+#define LPWM3     23
+#define R_EN3     27
+#define L_EN3     26
+#define ENC3_A    18
+#define ENC3_B    19
+#define RPWM3_CH  0
+#define LPWM3_CH  1
 
-// === CONFIGURACIÓN DEL SENSOR ACS712 ===
-ACS712 myACS(25, 3.3, 4095, 185);
+#define RPWM4     4
+#define LPWM4     5
+#define R_EN4     14
+#define L_EN4     13
+#define ENC4_A    35
+#define ENC4_B    34
+#define RPWM4_CH  2
+#define LPWM4_CH  3
 
-// Instanciar motores
-// Motor(int enable, int in1, int in2, int encoderA, int encoderB, float kp, float ki, float kd, unsigned long muestreo)
-Motor motor3(21, 23, 22, 19, 18, 0.1, 0.15, 0.08, 1);
-Motor motor4(15, 2, 4, 34, 35, 0.1, 0.15, 0.08, 1);
+// === Motores 3 y 4 instanciados ===
+Motor motor3(RPWM3, LPWM3, R_EN3, L_EN3, ENC3_A, ENC3_B, 0.12, 0.0857, 0.001, 10, RPWM3_CH, LPWM3_CH);
+Motor motor4(RPWM4, LPWM4, R_EN4, L_EN4, ENC4_A, ENC4_B, 0.12, 0.09, 0.001, 10, RPWM4_CH, LPWM4_CH);
 
-String inputCommand = ""; // Variable para almacenar el comando recibido
+// Configuración ACS712 (usa un pin analógico válido de ESP32)
+ACS712 myACS(36, 3.3, 4095, 185);  // Por ejemplo, GPIO36 (A0), ADC de 3.3V, 12 bits
+
+// Variables globales
+String inputCommand = "";
+bool usarPID = true;
+unsigned long lastCommandTime = 0;
+const unsigned long timeout = 3000;
+bool enControlDePosicion = false;
+const float PULSOS_POR_REVOLUCION = 270.0 * 64.0;
+long targetPosMotor3 = 0, targetPosMotor4 = 0;
+const float Kp_posicion = 0.05;
+const int POSICION_TOLERANCIA = 50;
+
+// Prototipo
 void processCommand(String command);
-bool usarPID = true; // Variable para controlar si se usa PID o no
-unsigned long lastCommandTime = 0; // Variable para almacenar el tiempo del último comando recibido
-const unsigned long timeout = 1000; // Tiempo de espera (1 segundo)
 
 void setup() {
   Serial.begin(115200);
-  while (!Serial); // Esperamos que el serial esté habilitado.
+  Serial.println("Inicializando ESP32 (Rebooting)");
 
-  Serial.println("Inicializando el ESP32");
-
-  // Inicializar motores
   motor3.inicializar();
   motor4.inicializar();
-  motor3.configurarPWM(490, 8);
-  motor4.configurarPWM(490, 8);
+  motor3.resetEncoderValues();
+  motor4.resetEncoderValues();
 
-  //Definimos el Pin de 25 como pulldown
-  pinMode(25, INPUT_PULLDOWN);
-  // Calibrar OFFSET del ACS712 en DC
-  myACS.autoMidPointDC(1000); // 50 lecturas => Ajusta a tu gusto
+  myACS.autoMidPointDC(1000);
+  myACS.setNoisemV(50.88);
 
-  // Definir el ruido
-  myACS.setNoisemV(60.88);
+  lastCommandTime = millis();
 }
 
 void loop() {
-  // Verificar si hay datos disponibles en el Serial
+  // Leer comandos seriales
   while (Serial.available() > 0) {
-    char receivedChar = Serial.read(); // Leer el carácter entrante
-
-    // Verificar delimitadores
+    char receivedChar = Serial.read();
     if (receivedChar == '<') {
-      inputCommand = ""; // Iniciar un nuevo comando
+      inputCommand = "";
     } else if (receivedChar == '>') {
-      processCommand(inputCommand); // Procesar comando completo
-      inputCommand = ""; // Limpiar la variable del comando
-      lastCommandTime = millis(); // Actualizar el tiempo del último comando recibido
+      processCommand(inputCommand);
+      inputCommand = "";
+      lastCommandTime = millis();
     } else {
-      inputCommand += receivedChar; // Agregar carácter al comando actual
+      inputCommand += receivedChar;
     }
   }
 
-  // Actualizar los motores si se está usando PID
   if (usarPID) {
+    if (enControlDePosicion) {
+      long currentPos3 = motor3.leerEncoder();
+      long currentPos4 = motor4.leerEncoder();
+      long errorPos3 = targetPosMotor3 - currentPos3;
+      long errorPos4 = targetPosMotor4 - currentPos4;
+
+      if (abs(errorPos3) < POSICION_TOLERANCIA && abs(errorPos4) < POSICION_TOLERANCIA) {
+        motor3.setReferenciaVelocidad(0);
+        motor4.setReferenciaVelocidad(0);
+        enControlDePosicion = false;
+        usarPID = false;
+        Serial.println("<Posicion alcanzada>");
+      } else {
+        float velSetpoint3 = Kp_posicion * errorPos3;
+        float velSetpoint4 = Kp_posicion * errorPos4;
+        motor3.setReferenciaVelocidad(velSetpoint3);
+        motor4.setReferenciaVelocidad(velSetpoint4);
+      }
+    }
     motor3.actualizar();
     motor4.actualizar();
   }
 
-  // Verificar si ha pasado el tiempo de espera sin recibir comandos
   if (millis() - lastCommandTime > timeout) {
-    // Detener los motores y deshabilitar el controlador
     motor3.controlarMotor(0);
     motor4.controlarMotor(0);
     motor3.desactivarMotor();
     motor4.desactivarMotor();
     usarPID = false;
+    enControlDePosicion = false;
   }
 }
 
 void processCommand(String command) {
-  switch (command.charAt(0)) {
+  if (command.length() == 0) return;
+
+  switch (command[0]) {
     case 'm': {
-      // Verificar si el segundo carácter es un espacio
-      if (command.length() < 3 || command.charAt(1) != ' ') {
-        Serial.println("<Error: Formato inválido. Debe ser <m valor1 valor2>>");
+      enControlDePosicion = false;
+      if (command.length() < 3 || command[1] != ' ') {
+        Serial.println("<Error: Formato invalido. Debe ser <m valor3 valor4>>");
         break;
       }
-
-      // Eliminar el prefijo "m " (incluyendo el espacio)
       command.remove(0, 2);
-
-      // Verificar si hay exactamente un espacio separando los valores
       int spaceIndex = command.indexOf(' ');
-      if (spaceIndex == -1 || spaceIndex == 0 || spaceIndex == command.length() - 1) {
-        Serial.println("<Error: Formato de comando inválido>");
-        break;
-      }
+      if (spaceIndex == -1) { Serial.println("<Error: Formato invalido>"); break; }
 
-      // Separar las velocidades
-      String velocidadMotor1 = command.substring(0, spaceIndex);
-      String velocidadMotor2 = command.substring(spaceIndex + 1);
-
-      // Convertir a float
-      float velMotor1RPS = velocidadMotor1.toFloat();
-      float velMotor2RPS = velocidadMotor2.toFloat();
-
-      // Configurar velocidades de los motores
-      motor3.setReferenciaVelocidadRPS(velMotor1RPS);
-      motor4.setReferenciaVelocidadRPS(velMotor2RPS);
-
+      float velMotor3RPS = command.substring(0, spaceIndex).toFloat();
+      float velMotor4RPS = command.substring(spaceIndex + 1).toFloat();
+      motor3.setReferenciaVelocidadRPS(velMotor3RPS);
+      motor4.setReferenciaVelocidadRPS(velMotor4RPS);
+      motor3.actualizar();
+      motor4.actualizar();
       usarPID = true;
+      motor3.sincronizarRampa();
+      motor4.sincronizarRampa();
 
-      // Detener motores si ambas velocidades son 0
-      if (velMotor1RPS == 0 && velMotor2RPS == 0) {
+      if (velMotor3RPS == 0 && velMotor4RPS == 0) {
         motor3.controlarMotor(0);
         motor4.controlarMotor(0);
         usarPID = false;
@@ -114,84 +139,75 @@ void processCommand(String command) {
       }
       break;
     }
-
-
-    case 'o': {
-      // Comando para configurar PWM de los motores directamente (sin PID)
-      command.remove(0, 1); // Eliminar el prefijo "o"
-
+    case 'p': {
+      if (command.length() < 3 || command[1] != ' ') {
+        Serial.println("<Error: Formato invalido. Debe ser <p vueltas3 vueltas4>>");
+        break;
+      }
+      command.remove(0, 2);
       int spaceIndex = command.indexOf(' ');
-      String pwmMotor1 = command.substring(0, spaceIndex);
-      String pwmMotor2 = command.substring(spaceIndex + 1);
+      if (spaceIndex == -1) { Serial.println("<Error: Formato invalido>"); break; }
 
-      int pwmMotor1Value = pwmMotor1.toInt();
-      int pwmMotor2Value = pwmMotor2.toInt();
+      float vueltasMotor3 = command.substring(0, spaceIndex).toFloat();
+      float vueltasMotor4 = command.substring(spaceIndex + 1).toFloat();
+      targetPosMotor3 = motor3.leerEncoder() + (long)(vueltasMotor3 * PULSOS_POR_REVOLUCION);
+      targetPosMotor4 = motor4.leerEncoder() + (long)(vueltasMotor4 * PULSOS_POR_REVOLUCION);
 
-      motor3.controlarMotor(pwmMotor1Value);
-      motor4.controlarMotor(pwmMotor2Value);
+      Serial.print("<Moviendo a posicion (ticks): ");
+      Serial.print(targetPosMotor3); Serial.print(", "); Serial.print(targetPosMotor4);
+      Serial.println(">");
 
+      enControlDePosicion = true;
+      usarPID = true;
+      break;
+    }
+    case 'o': {
+      enControlDePosicion = false;
+      command.remove(0, 1);
+      int spaceIndex = command.indexOf(' ');
+      int pwmMotor3Value = command.substring(0, spaceIndex).toInt();
+      int pwmMotor4Value = command.substring(spaceIndex + 1).toInt();
+      motor3.controlarMotor(pwmMotor3Value);
+      motor4.controlarMotor(pwmMotor4Value);
       usarPID = false;
-
       Serial.println("<Control PWM directo activado>");
-      Serial.print("<Motor 3 (PWM): ");
-      Serial.print(pwmMotor1Value);
-      Serial.println(">");
-      Serial.print("<Motor 4 (PWM): ");
-      Serial.print(pwmMotor2Value);
-      Serial.println(">");
       break;
     }
-
     case 'b': {
-      // Comando para devolver el baudrate
-      Serial.print("<Baudrate actual: ");
-      Serial.print(Serial.baudRate());
-      Serial.println(">");
+      Serial.print("<Baudrate actual: 115200>");
       break;
     }
-
     case 'e': {
-      // Comando para devolver los valores de los encoders
       Serial.print("<");
-      Serial.print(motor3.leerEncoder());
-      Serial.print(",");
-      Serial.print(motor4.leerEncoder());
+      Serial.print(motor3.leerEncoder()); Serial.print(","); Serial.print(motor4.leerEncoder());
       Serial.println(">");
       break;
     }
-
     case 'r': {
-      // Comando para resetear los encoders
-      motor3.resetEncodersValues();
-      motor4.resetEncodersValues();
+      motor3.resetEncoderValues();
+      motor4.resetEncoderValues();
       Serial.println("<Encoders reseteados>");
       break;
     }
-
     case 'i': {
       Serial.println("<OK>");
       break;
     }
-
     case 'v': {
-      // Comando para devolver la velocidad actual de los motores en RPS
       Serial.print("<");
-      Serial.print(motor3.getVelocidadRPS());
-      Serial.print(",");
-      Serial.println(motor4.getVelocidadRPS());
+      Serial.print(motor3.getVelocidadRPS()); Serial.print(","); Serial.print(motor4.getVelocidadRPS());
       Serial.println(">");
       break;
     }
     case 'c': {
-      float current_mA = myACS.mA_DC(60); // Leer corriente
+      float current_mA = myACS.mA_DC(60);
       Serial.print("<");
       Serial.print(current_mA / 1000);
       Serial.println(">");
       break;
     }
     default: {
-      // Comando inválido
-      Serial.println("<Comando inválido>");
+      Serial.println("<Comando invalido>");
       break;
     }
   }
