@@ -30,7 +30,7 @@ public:
         : pinRPWM(rpwm), pinLPWM(lpwm), pinR_EN(r_en), pinL_EN(l_en),
           pinEncoderA(encoderA), pinEncoderB(encoderB),
           kp(Kp), ki(Ki), kd(Kd), intervaloMuestreo(muestreo),
-          rampa(85000.0f), rpwm_ch(rpwm_ch), lpwm_ch(lpwm_ch)
+          rampa(40000.0f), rpwm_ch(rpwm_ch), lpwm_ch(lpwm_ch)
     {
         referenciaVelocidad = errorActual = errorPrevio = sumaErrores = derivadaError = 0;
         posicionEncoder = 0; velocidadActual = 0; valorPWM = 0;

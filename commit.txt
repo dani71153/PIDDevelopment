@@ -1,0 +1,15 @@
+"feat(ESP32): Migración y soporte completo para control de motores 3 y 4 en ESP32
+
+- Adaptado el control de motores para el ESP32 usando PWM hardware (ledcWrite) y la librería ESP32Encoder.
+- Añadidos pines y canales PWM exclusivos para motores 3 y 4: 
+    RPWM3=25 (canal 0), LPWM3=23 (canal 1), R_EN3=27, L_EN3=26, ENC3_A=18, ENC3_B=19
+    RPWM4=4  (canal 2), LPWM4=5  (canal 3), R_EN4=14, L_EN4=13, ENC4_A=35, ENC4_B=34
+- Se crean instancias Motor motor3 y motor4, configuradas para ESP32.
+- Actualizados los comandos seriales para operar en modo velocidad y modo posición para ambos motores.
+- Migrado el control de encoders a ESP32Encoder para compatibilidad total.
+- Eliminada cualquier referencia a pines no válidos en ESP32 (ej. pin 53).
+- Adaptado el sensor ACS712 al pin analógico de ESP32 (ejemplo: GPIO36/A0), y ajustados los valores de referencia ADC.
+- Mantenida la lógica de timeout y desactivación segura de motores tras 3s sin comando.
+- Documentados los puntos de compatibilidad y advertencias sobre canales PWM y pines especiales.
+- Preparado para futuras extensiones a motores 1 y 2 si es necesario.
+"
