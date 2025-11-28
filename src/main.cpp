@@ -15,7 +15,8 @@ const float R2 = 7500.0;
 const float DIV_RATIO = (R1 + R2) / R2;   // ≈5.0
 
 // Calibración
-const float K_CAL = 4.513f / 3.16f;       // ≈1.43
+const float K_CAL5V = 1.57;   // ≈1.43
+const float K_CAL14V = 1.05;       // ≈1.43
 
 // Lectura ADC promediada
 float readVoltageRaw(int pin) {
@@ -35,11 +36,11 @@ float readVoltageRaw(int pin) {
 }
 
 float readVoltage5V() {
-  return readVoltageRaw(PIN_VOLT_5V) * K_CAL;
+  return readVoltageRaw(PIN_VOLT_5V) * K_CAL5V;
 }
 
 float readVoltage14V() {
-  return readVoltageRaw(PIN_VOLT_14V) * K_CAL;
+  return readVoltageRaw(PIN_VOLT_14V) * K_CAL14V;
 }
 
 

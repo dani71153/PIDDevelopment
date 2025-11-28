@@ -1,15 +1,21 @@
-"feat(ESP32): Migración y soporte completo para control de motores 3 y 4 en ESP32
+feat: Integración de lectura de voltaje (5V y 14V) para comunicación con ROS2
 
-- Adaptado el control de motores para el ESP32 usando PWM hardware (ledcWrite) y la librería ESP32Encoder.
-- Añadidos pines y canales PWM exclusivos para motores 3 y 4: 
-    RPWM3=25 (canal 0), LPWM3=23 (canal 1), R_EN3=27, L_EN3=26, ENC3_A=18, ENC3_B=19
-    RPWM4=4  (canal 2), LPWM4=5  (canal 3), R_EN4=14, L_EN4=13, ENC4_A=35, ENC4_B=34
-- Se crean instancias Motor motor3 y motor4, configuradas para ESP32.
-- Actualizados los comandos seriales para operar en modo velocidad y modo posición para ambos motores.
-- Migrado el control de encoders a ESP32Encoder para compatibilidad total.
-- Eliminada cualquier referencia a pines no válidos en ESP32 (ej. pin 53).
-- Adaptado el sensor ACS712 al pin analógico de ESP32 (ejemplo: GPIO36/A0), y ajustados los valores de referencia ADC.
-- Mantenida la lógica de timeout y desactivación segura de motores tras 3s sin comando.
-- Documentados los puntos de compatibilidad y advertencias sobre canales PWM y pines especiales.
-- Preparado para futuras extensiones a motores 1 y 2 si es necesario.
-"
+- Añadidas constantes PIN_VOLT_5V y PIN_VOLT_14V para los sensores conectados en GPIO 32 y 33.
+- Implementado el divisor resistivo del módulo FZ0430 (R1=30k, R2=7.5k) con factor DIV_RATIO ≈ 5.0.
+- Incluida calibración global mediante factor K_CAL basado en mediciones reales (3.16V → 4.513V).
+- Creada la función readVoltageRaw() con:
+    - 50 muestras promedio
+    - lectura ADC a 12 bits
+    - atenuación ADC_11db
+    - conversión a voltaje del pin
+    - reconstrucción del voltaje original antes del divisor
+- Implementados nuevos comandos seriales:
+    - <V1> → retorna voltaje calibrado del sensor de 5V
+    - <V2> → retorna voltaje calibrado del sensor de 14V
+- Integrado el manejo de ambos comandos dentro del switch de processCommand().
+- Añadido retorno en formato <valor> para compatibilidad con el parser del Hardware Interface en ROS2.
+- Incorporado código de calibración inicial y configuración ADC en setup().
+- Validada la coherencia de lectura y estabilidad del sensor mediante promediado interno.
+- Se crearon variables de calibracion para cada uno de los valores.
+
+Con este commit el ESP32 expone correctamente el voltaje del bus de 5V y del bus de 14V del robot, permitiendo que la interfaz de hardware en ROS2 consulte estos valores a través de los comandos <V1> y <V2>.
